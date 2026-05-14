@@ -1,0 +1,258 @@
+substitutions:
+  name: jk-bms
+  external_components_source: github://syssi/esphome-jk-bms@main
+  mac_address: 20:23:04:33:7B:67
+  protocol_version: JK02_32S
+  mqtt_prefix: "bms_panel/2602165" 
+
+esphome:
+  name: ${name}
+  comment: "BMS BLE to MQTT JSON Bridge"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+external_components:
+  - source: ${external_components_source}
+    refresh: 0s
+
+logger:
+  level: DEBUG
+
+wifi:
+  # ssid dan password utama dikosongkan agar murni menggunakan WiFi Manager (Captive Portal)
+  ap:
+    ssid: "Homispe"
+    password: "0098765431"
+
+# Menambahkan captive_portal agar AP bisa digunakan untuk setting WiFi
+captive_portal:
+
+ota:
+  - platform: esphome
+    password: "98765431"
+
+mqtt:
+  # broker: broker.mqtt.cool 
+  broker: broker.emqx.io
+  port: 1883
+  topic_prefix: ${mqtt_prefix}
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: false
+
+ble_client:
+  - mac_address: ${mac_address}
+    id: client0
+
+jk_bms_ble:
+  - ble_client_id: client0
+    protocol_version: ${protocol_version}
+    throttle: 2s
+    id: bms0
+
+# =========================================================
+# 1. SENSOR DATA
+# =========================================================
+sensor:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    total_voltage:
+      name: "Total Voltage"
+      id: bms_voltage
+      internal: true
+    current:
+      name: "Current"
+      id: bms_current
+      internal: true
+    power:
+      name: "Power"
+      id: bms_power
+      internal: true
+    power_tube_temperature:
+      name: "MOS Temp"
+      id: bms_mos_temp
+      internal: true
+    temperature_sensor_1:
+      name: "Battery Temp 1"
+      id: bms_bat_temp1
+      internal: true
+    temperature_sensor_2:
+      name: "Battery Temp 2"
+      id: bms_bat_temp2
+      internal: true
+
+    state_of_charge:
+      name: "SOC"
+      id: bms_soc
+      internal: true
+
+    capacity_remaining:
+      name: "Capacity Remaining"
+      id: bms_cap_remain
+      internal: true
+
+    cell_voltage_1:
+      name: "Cell 1"
+      id: bms_cell_1
+      internal: true
+    cell_voltage_2:
+      name: "Cell 2"
+      id: bms_cell_2
+      internal: true
+    cell_voltage_3:
+      name: "Cell 3"
+      id: bms_cell_3
+      internal: true
+    cell_voltage_4:
+      name: "Cell 4"
+      id: bms_cell_4
+      internal: true
+    cell_voltage_5:
+      name: "Cell 5"
+      id: bms_cell_5
+      internal: true
+    cell_voltage_6:
+      name: "Cell 6"
+      id: bms_cell_6
+      internal: true
+    cell_voltage_7:
+      name: "Cell 7"
+      id: bms_cell_7
+      internal: true
+    cell_voltage_8:
+      name: "Cell 8"
+      id: bms_cell_8
+      internal: true
+
+    cell_resistance_1:
+      name: "Resist 1"
+      id: bms_res_1
+      internal: true
+    cell_resistance_2:
+      name: "Resist 2"
+      id: bms_res_2
+      internal: true
+    cell_resistance_3:
+      name: "Resist 3"
+      id: bms_res_3
+      internal: true
+    cell_resistance_4:
+      name: "Resist 4"
+      id: bms_res_4
+      internal: true
+    cell_resistance_5:
+      name: "Resist 5"
+      id: bms_res_5
+      internal: true
+    cell_resistance_6:
+      name: "Resist 6"
+      id: bms_res_6
+      internal: true
+    cell_resistance_7:
+      name: "Resist 7"
+      id: bms_res_7
+      internal: true
+    cell_resistance_8:
+      name: "Resist 8"
+      id: bms_res_8
+      internal: true
+
+# =========================================================
+# 2. LOGIKA PACKING JSON
+# =========================================================
+interval:
+  - interval: 1s 
+    then:
+      - if:
+          condition:
+            binary_sensor.is_on: bms_online_status
+          then:
+            - mqtt.publish_json:
+                topic: "${mqtt_prefix}/data/main"
+                payload: |-
+                  root["voltage"] = id(bms_voltage).has_state() ? id(bms_voltage).state : 0.0;
+                  root["current"] = id(bms_current).has_state() ? id(bms_current).state : 0.0;
+                  root["power"] = id(bms_power).has_state() ? id(bms_power).state : 0.0;
+                  root["mos_temp"] = id(bms_mos_temp).has_state() ? id(bms_mos_temp).state : 0.0;
+                  root["bat_temp1"] = id(bms_bat_temp1).has_state() ? id(bms_bat_temp1).state : 0.0;
+                  root["bat_temp2"] = id(bms_bat_temp2).has_state() ? id(bms_bat_temp2).state : 0.0;
+
+                  JsonArray cells = root.createNestedArray("cells_v");
+                  cells.add(id(bms_cell_1).has_state() ? id(bms_cell_1).state : 0.0);
+                  cells.add(id(bms_cell_2).has_state() ? id(bms_cell_2).state : 0.0);
+                  cells.add(id(bms_cell_3).has_state() ? id(bms_cell_3).state : 0.0);
+                  cells.add(id(bms_cell_4).has_state() ? id(bms_cell_4).state : 0.0);
+                  cells.add(id(bms_cell_5).has_state() ? id(bms_cell_5).state : 0.0);
+                  cells.add(id(bms_cell_6).has_state() ? id(bms_cell_6).state : 0.0);
+                  cells.add(id(bms_cell_7).has_state() ? id(bms_cell_7).state : 0.0);
+                  cells.add(id(bms_cell_8).has_state() ? id(bms_cell_8).state : 0.0);
+
+                  JsonArray res = root.createNestedArray("wire_res");
+                  res.add(id(bms_res_1).has_state() ? id(bms_res_1).state : 0.0);
+                  res.add(id(bms_res_2).has_state() ? id(bms_res_2).state : 0.0);
+                  res.add(id(bms_res_3).has_state() ? id(bms_res_3).state : 0.0);
+                  res.add(id(bms_res_4).has_state() ? id(bms_res_4).state : 0.0);
+                  res.add(id(bms_res_5).has_state() ? id(bms_res_5).state : 0.0);
+                  res.add(id(bms_res_6).has_state() ? id(bms_res_6).state : 0.0);
+                  res.add(id(bms_res_7).has_state() ? id(bms_res_7).state : 0.0);
+                  res.add(id(bms_res_8).has_state() ? id(bms_res_8).state : 0.0);
+
+            - mqtt.publish_json:
+                topic: "${mqtt_prefix}/data/soc_bawaan"
+                payload: |-
+                  root["soc_jk"] = id(bms_soc).has_state() ? id(bms_soc).state : 0.0;
+                  root["capacity_remain"] = id(bms_cap_remain).has_state() ? id(bms_cap_remain).state : 0.0;
+
+            - mqtt.publish_json:
+                topic: "${mqtt_prefix}/state/switches"
+                payload: |-
+                  root["charge_switch"] = id(sw_charge).state ? "ON" : "OFF";
+                  root["discharge_switch"] = id(sw_discharge).state ? "ON" : "OFF";
+                  root["balance_switch"] = id(sw_balance).state ? "ON" : "OFF";
+
+            - mqtt.publish_json:
+                topic: "${mqtt_prefix}/state/settings"
+                payload: |-
+                  root["cell_count_setting"] = id(num_cell_count).has_state() ? id(num_cell_count).state : 0;
+                  root["capacity_setting"] = id(num_capacity).has_state() ? id(num_capacity).state : 0;
+                  root["balance_trig_v"] = id(num_bal_trig).has_state() ? id(num_bal_trig).state : 0.0;
+
+# =========================================================
+# 3. KONTROL PENUH BMS & RELAY EXT (Terekspos)
+# =========================================================
+switch:
+  - platform: jk_bms_ble
+    charging:
+      name: "Charge Switch"
+      id: sw_charge
+    discharging:
+      name: "Discharge Switch"
+      id: sw_discharge
+    balancer:
+      name: "Balance Switch"
+      id: sw_balance
+
+number:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    cell_count:
+      name: "Cell Count Setting"
+      id: num_cell_count
+    total_battery_capacity:
+      name: "Capacity Setting"
+      id: num_capacity
+    balance_trigger_voltage:
+      name: "Balance Trig V"
+      id: num_bal_trig
+
+binary_sensor:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    online_status:
+      name: "BMS Online Status"
+      id: bms_online_status
+      internal: true
