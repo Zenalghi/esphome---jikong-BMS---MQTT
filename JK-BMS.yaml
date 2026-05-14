@@ -1,7 +1,7 @@
 substitutions:
   name: jk-bms
   external_components_source: github://syssi/esphome-jk-bms@main
-  mac_address: 20:23:04:33:7B:67
+  mac_address: 28:D4:1E:26:24:71
   protocol_version: JK02_32S
   mqtt_prefix: "bms_panel/2602165" 
 
