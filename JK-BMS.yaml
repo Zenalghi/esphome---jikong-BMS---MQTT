@@ -1,65 +1,120 @@
+# =========================================================
+# BAGIAN SUBSTITUTIONS (VARIABEL)
+# Ini adalah tempat menyimpan nilai-nilai yang akan sering dipakai berulang di bawah.
+# Ibarat "variabel" agar jika ingin mengganti sesuatu, cukup ganti di sini saja.
+# =========================================================
 substitutions:
-  name: jk-bms
-  external_components_source: github://syssi/esphome-jk-bms@main
-  mac_address: 28:D4:1E:26:24:71
-  protocol_version: JK02_32S
-  mqtt_prefix: "bms_panel/2602165" 
+  name: jk-bms                                               # Nama perangkat ESP32 Anda di jaringan
+  external_components_source: github://syssi/esphome-jk-bms@main  # Link sumber library eksternal untuk bisa membaca JK BMS
+  mac_address: 28:D4:1E:26:24:71                             # ALAMAT BLUETOOTH BMS (Sangat penting, ubah sesuai alat Anda)
+  protocol_version: JK02_32S                                 # Tipe versi komunikasi JK BMS yang dipakai
+  mqtt_prefix: "bms_panel/2602165"                           # Awalan alamat tujuan pengiriman data (Topik MQTT)
 
+# =========================================================
+# BAGIAN INTI ESPHOME
+# Mengatur nama node untuk ESPHome. Membaca dari variabel ${name} di atas.
+# =========================================================
 esphome:
   name: ${name}
   comment: "BMS BLE to MQTT JSON Bridge"
 
+# =========================================================
+# KONFIGURASI HARDWARE
+# Mengatur jenis perangkat yang digunakan, yaitu ESP32 tipe standard (esp32dev)
+# =========================================================
 esp32:
   board: esp32dev
   framework:
     type: arduino
 
+# =========================================================
+# KOMPONEN EKSTERNAL
+# ESPHome bawaan belum tahu cara baca JK BMS. Bagian ini mendownload
+# kode/library dari Github syssi agar ESP32 bisa mengenali BMS Anda.
+# =========================================================
 external_components:
   - source: ${external_components_source}
-    refresh: 0s
+    refresh: 0s   # Selalu gunakan versi terbaru yang sudah ada (tidak download ulang jika tidak perlu)
 
+# =========================================================
+# LOGGING (PENCATATAN)
+# Level DEBUG akan mencetak semua aktivitas ESP secara sangat detail
+# Berguna saat Anda mencolokkan kabel USB ke laptop untuk mencari sumber error (debugging).
+# =========================================================
 logger:
   level: DEBUG
 
+# =========================================================
+# KONFIGURASI WIFI
+# =========================================================
 wifi:
-  # ssid dan password utama dikosongkan agar murni menggunakan WiFi Manager (Captive Portal)
+  # Kita tidak memasukkan ssid/password WiFi rumah di sini.
+  # Sebagai gantinya, ESP32 akan memancarkan WiFi sendiri (Access Point/AP).
+  # Jika ESP tidak punya koneksi internet, Anda bisa nyalakan WiFi di HP, 
+  # cari WiFi bernama "Homispe", masuk pakai password "0098765431", 
+  # lalu dari situ Anda bisa menyambungkan ESP ke WiFi rumah Anda.
   ap:
     ssid: "Homispe"
     password: "0098765431"
 
-# Menambahkan captive_portal agar AP bisa digunakan untuk setting WiFi
+# Fitur yang memunculkan jendela "Login" di HP saat konek ke WiFi Homispe.
 captive_portal:
 
+# =========================================================
+# OTA (OVER THE AIR)
+# Memungkinkan Anda melakukan flash ulang/update kode program
+# secara nirkabel lewat jaringan WiFi, tanpa harus colok kabel USB ke ESP lagi.
+# =========================================================
 ota:
   - platform: esphome
     password: "98765431"
 
+# =========================================================
+# MQTT (PENGIRIMAN DATA)
+# ESP32 akan mengirim data baterai Anda ke server/broker ini
+# agar bisa dibaca oleh aplikasi lain dari mana saja.
+# =========================================================
 mqtt:
   # broker: broker.mqtt.cool 
-  broker: broker.emqx.io
-  port: 1883
-  topic_prefix: ${mqtt_prefix}
+  broker: broker.emqx.io    # Alamat server MQTT yang digunakan (server publik)
+  port: 1883                # Port standar MQTT
+  topic_prefix: ${mqtt_prefix} # Topik utama (akan jadi bms_panel/2602165)
 
+# =========================================================
+# PENGATURAN BLUETOOTH (BLE)
+# Menyalakan komponen pelacak bluetooth di ESP32
+# active: false karena kita tahu persis alamat MAC BMS, jadi tidak perlu capek mencari/scan sembarangan
+# =========================================================
 esp32_ble_tracker:
   scan_parameters:
     active: false
 
+# Membuat koneksi spesifik (client) ke alat Bluetooth BMS kita berdasarkan mac_address
 ble_client:
   - mac_address: ${mac_address}
     id: client0
 
+# Menghubungkan client Bluetooth tadi ke dalam logika dan penerjemah protokol JK BMS
 jk_bms_ble:
   - ble_client_id: client0
     protocol_version: ${protocol_version}
-    throttle: 2s
+    throttle: 2s   # Jangan baca data terlalu cepat, jeda 2 detik (menghemat CPU)
     id: bms0
 
 # =========================================================
-# 1. SENSOR DATA
+# 1. SENSOR DATA (MEMBACA NILAI DARI BMS)
+# =========================================================
+# Bagian ini mengambil semua nilai-nilai dari JK BMS.
+# Perhatikan "internal: true". Ini berarti data tersebut disembunyikan/hanya 
+# dibaca di dalam sistem ESP ini saja. Kita menyembunyikannya karena nanti
+# di bagian bawah kita akan membungkus data-data ini sendiri menjadi format JSON
+# agar pengiriman MQTT-nya rapi dan tidak membuang kuota data.
 # =========================================================
 sensor:
   - platform: jk_bms_ble
     jk_bms_ble_id: bms0
+    
+    # Membaca data umum baterai
     total_voltage:
       name: "Total Voltage"
       id: bms_voltage
@@ -72,6 +127,8 @@ sensor:
       name: "Power"
       id: bms_power
       internal: true
+    
+    # Membaca suhu
     power_tube_temperature:
       name: "MOS Temp"
       id: bms_mos_temp
@@ -85,16 +142,17 @@ sensor:
       id: bms_bat_temp2
       internal: true
 
+    # Membaca kapasitas
     state_of_charge:
       name: "SOC"
       id: bms_soc
       internal: true
-
     capacity_remaining:
       name: "Capacity Remaining"
       id: bms_cap_remain
       internal: true
 
+    # Membaca tegangan tiap-tiap cell (Sel 1 sampai 8)
     cell_voltage_1:
       name: "Cell 1"
       id: bms_cell_1
@@ -128,6 +186,7 @@ sensor:
       id: bms_cell_8
       internal: true
 
+    # Membaca hambatan kabel tiap cell (untuk deteksi kabel longgar/rusak)
     cell_resistance_1:
       name: "Resist 1"
       id: bms_res_1
@@ -162,17 +221,24 @@ sensor:
       internal: true
 
 # =========================================================
-# 2. LOGIKA PACKING JSON
+# 2. LOGIKA PACKING JSON (MENGIRIM DATA KE MQTT)
 # =========================================================
+# Logika ini berjalan otomatis terus-menerus (looping).
 interval:
-  - interval: 1s 
+  - interval: 1s   # Diulang-ulang setiap 1 detik
     then:
       - if:
+          # Pastikan koneksi Bluetooth ke BMS sedang hidup/Online
           condition:
             binary_sensor.is_on: bms_online_status
           then:
+            
+            # --- MENGIRIM DATA UTAMA ---
+            # mqtt.publish_json: Mengirim data ke server dalam format JSON (bisa diubah jadi array/object)
             - mqtt.publish_json:
                 topic: "${mqtt_prefix}/data/main"
+                # Bagian "payload" adalah kode C++ untuk membungkus data sensor dari atas.
+                # 'has_state()' mengecek apakah datanya valid, kalau ya pakai 'state' (nilainya), kalau error kirim '0.0'
                 payload: |-
                   root["voltage"] = id(bms_voltage).has_state() ? id(bms_voltage).state : 0.0;
                   root["current"] = id(bms_current).has_state() ? id(bms_current).state : 0.0;
@@ -181,6 +247,7 @@ interval:
                   root["bat_temp1"] = id(bms_bat_temp1).has_state() ? id(bms_bat_temp1).state : 0.0;
                   root["bat_temp2"] = id(bms_bat_temp2).has_state() ? id(bms_bat_temp2).state : 0.0;
 
+                  // Membuat list/array berisi tegangan sel
                   JsonArray cells = root.createNestedArray("cells_v");
                   cells.add(id(bms_cell_1).has_state() ? id(bms_cell_1).state : 0.0);
                   cells.add(id(bms_cell_2).has_state() ? id(bms_cell_2).state : 0.0);
@@ -191,6 +258,7 @@ interval:
                   cells.add(id(bms_cell_7).has_state() ? id(bms_cell_7).state : 0.0);
                   cells.add(id(bms_cell_8).has_state() ? id(bms_cell_8).state : 0.0);
 
+                  // Membuat list/array berisi nilai hambatan kabel
                   JsonArray res = root.createNestedArray("wire_res");
                   res.add(id(bms_res_1).has_state() ? id(bms_res_1).state : 0.0);
                   res.add(id(bms_res_2).has_state() ? id(bms_res_2).state : 0.0);
@@ -201,12 +269,14 @@ interval:
                   res.add(id(bms_res_7).has_state() ? id(bms_res_7).state : 0.0);
                   res.add(id(bms_res_8).has_state() ? id(bms_res_8).state : 0.0);
 
+            # --- MENGIRIM DATA KAPASITAS BATERAI ---
             - mqtt.publish_json:
                 topic: "${mqtt_prefix}/data/soc_bawaan"
                 payload: |-
                   root["soc_jk"] = id(bms_soc).has_state() ? id(bms_soc).state : 0.0;
                   root["capacity_remain"] = id(bms_cap_remain).has_state() ? id(bms_cap_remain).state : 0.0;
 
+            # --- MENGIRIM DATA STATUS TOMBOL/SWITCH ---
             - mqtt.publish_json:
                 topic: "${mqtt_prefix}/state/switches"
                 payload: |-
@@ -214,6 +284,7 @@ interval:
                   root["discharge_switch"] = id(sw_discharge).state ? "ON" : "OFF";
                   root["balance_switch"] = id(sw_balance).state ? "ON" : "OFF";
 
+            # --- MENGIRIM DATA PENGATURAN ---
             - mqtt.publish_json:
                 topic: "${mqtt_prefix}/state/settings"
                 payload: |-
@@ -222,7 +293,12 @@ interval:
                   root["balance_trig_v"] = id(num_bal_trig).has_state() ? id(num_bal_trig).state : 0.0;
 
 # =========================================================
-# 3. KONTROL PENUH BMS & RELAY EXT (Terekspos)
+# 3. KONTROL PENUH BMS & RELAY EXT (TEREKSPOS KE LUAR)
+# =========================================================
+# Bagian ini BUKAN SEKADAR MEMBACA, tapi BISA DIKLIK/DIUBAH.
+# Melalui integrasi ESPHome, Anda bisa menekan Switch ini
+# dari jarak jauh untuk mematikan fungsi Charge/Discharge/Balance
+# langsung di BMS secara fisik.
 # =========================================================
 switch:
   - platform: jk_bms_ble
@@ -236,6 +312,8 @@ switch:
       name: "Balance Switch"
       id: sw_balance
 
+# Memungkinkan Anda mengatur parameter di dalam BMS
+# seperti mengganti berapa jumlah sel (misal 8s atau 16s), kapasitas AH, dll
 number:
   - platform: jk_bms_ble
     jk_bms_ble_id: bms0
@@ -249,10 +327,12 @@ number:
       name: "Balance Trig V"
       id: num_bal_trig
 
+# Sensor on/off (Binary) yang hanya menandakan apakah koneksi bluetooth
+# antara ESP32 dan BMS sedang tersambung atau terputus.
 binary_sensor:
   - platform: jk_bms_ble
     jk_bms_ble_id: bms0
     online_status:
       name: "BMS Online Status"
       id: bms_online_status
-      internal: true
+      internal: true
